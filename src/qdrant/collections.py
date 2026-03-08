@@ -30,6 +30,11 @@ INDEXED_FIELDS = [
     ("sentence_type", models.PayloadSchemaType.KEYWORD),
     ("date_judgment", models.PayloadSchemaType.DATETIME),
     ("case_number", models.PayloadSchemaType.KEYWORD),
+    # Point identity & hierarchy (ticket #26)
+    ("point_type", models.PayloadSchemaType.KEYWORD),
+    ("parent_case_id", models.PayloadSchemaType.KEYWORD),
+    ("court_code", models.PayloadSchemaType.KEYWORD),
+    ("tier_c_field", models.PayloadSchemaType.KEYWORD),
 ]
 
 
