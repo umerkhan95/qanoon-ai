@@ -125,6 +125,36 @@ A multi-agent legal intelligence platform for Pakistani law. LangGraph Deep Agen
 | YLR | Yearly Law Reporter | Annual |
 | MLD | Monthly Law Digest | Monthly |
 
+## Implementation Status
+
+### Completed
+- **Three-tier criminal extraction pipeline** — Tier A (regex/NER), Tier B (LLM classification, 65 fields), Tier C (LLM reasoning texts, 17 fields)
+- **Reasoning Point Decomposition** (#25) — Judgments decomposed into 5-50+ atomic reasoning points (facts, issues, arguments, evidence, court reasoning, ratio decidendi, obiter dicta, final order, dissent). Each point independently searchable in Qdrant with rich metadata.
+- **Data Individuality** (#26) — Deterministic UUID3 point IDs from structured keys (`{court}:{case_number}:{point_type}:{sequence}`), multi-point ingestion, payload collision prevention via `reasoning_metadata` namespacing.
+- **SAC Chunking** (#18) — Summary-Augmented Chunking with section-based splitting
+- **pk_judgments Qdrant collection** (#20) — Hybrid search (dense + sparse BM25), 4 reasoning payload indexes
+- **Voyage 3.5 embeddings** (#19) — Legal-specific embedding model
+- **CommonLII crawler** (#8) — 2,906 SC cases from commonlii.org
+
+### Key Modules
+| Module | Path | Responsibility |
+|--------|------|----------------|
+| Tier A (regex) | `src/extractors/criminal/tier_a.py` | Fast deterministic extraction |
+| Tier B (LLM) | `src/extractors/criminal/tier_b.py` | 65 reasoned classification fields |
+| Tier C (LLM) | `src/extractors/criminal/tier_c.py` | 17 reasoning text fields |
+| Reasoning Points | `src/extractors/criminal/reasoning_points.py` | Atomic point decomposition |
+| Reasoning Schema | `src/extractors/criminal/reasoning_schema.py` | Pydantic models for reasoning |
+| Pipeline | `src/extractors/criminal/pipeline.py` | Orchestrates all 4 passes |
+| Point IDs | `src/qdrant/point_id.py` | Deterministic UUID generation |
+| Ingestion | `src/qdrant/ingestion.py` | Multi-point Qdrant upsert |
+| Collections | `src/qdrant/collections.py` | pk_judgments schema + indexes |
+| Embeddings | `src/qdrant/embeddings.py` | Voyage 3.5 embedding service |
+
+### Known LLM Patterns to Handle
+- LLM returns literal `"null"`, `"None"`, `"N/A"` strings instead of JSON null — must filter before Pydantic validation
+- LLM returns `"null"` inside lists (e.g., `["null", "first_offense"]`) — must filter per-element
+- LLM errors propagate from Tier B/C/Reasoning → pipeline catches `LLMContentRefused`, `LLMParsingError`, `LLMError`
+
 ## Code Rules
 
 - Never add Co-Authored-By or any co-author lines in git commit messages
@@ -141,57 +171,37 @@ A multi-agent legal intelligence platform for Pakistani law. LangGraph Deep Agen
 - Type hints on all function signatures
 - Pydantic models for all data structures crossing module boundaries
 
-## Directory Structure (Target)
+## Directory Structure
 
 ```
 ├── CLAUDE.md
 ├── plans.md
 ├── src/
 │   ├── pipelines/           # crawl4ai extractors (one per site)
-│   │   ├── supreme_court/
-│   │   ├── lahore_hc/
-│   │   ├── sindh_hc/
-│   │   ├── islamabad_hc/
-│   │   ├── peshawar_hc/
-│   │   ├── balochistan_hc/
-│   │   ├── federal_shariat/
-│   │   ├── pakistan_code/
-│   │   ├── national_assembly/
-│   │   ├── senate/
-│   │   ├── legislation_pk/
-│   │   ├── provincial_assemblies/
-│   │   └── commonlii/
+│   │   └── commonlii/      # ✓ IMPLEMENTED — 2,906 SC cases
 │   ├── extractors/          # Structured field extractors
-│   │   ├── judgment_extractor.py
-│   │   ├── statute_extractor.py
-│   │   ├── citation_parser.py
-│   │   └── metadata_extractor.py
-│   ├── qdrant/              # Vector store layer
-│   │   ├── collections.py
-│   │   ├── embeddings.py
-│   │   ├── ingestion.py
-│   │   └── search.py
-│   ├── agents/              # LangGraph agents
-│   │   ├── supervisor.py
-│   │   ├── case_researcher.py
-│   │   ├── statute_analyst.py
-│   │   ├── precedent_matcher.py
-│   │   ├── judgment_analyzer.py
-│   │   ├── legal_reasoner.py
-│   │   └── response_synthesizer.py
-│   ├── personas/            # Lawyer persona configs
-│   │   ├── criminal_defense.py
-│   │   ├── criminal_prosecution.py
-│   │   ├── civil_litigation.py
-│   │   ├── corporate.py
-│   │   ├── family.py
-│   │   ├── constitutional.py
-│   │   ├── tax.py
-│   │   └── labor.py
-│   ├── api/                 # FastAPI backend
-│   └── frontend/            # React UI
-├── config/
-├── tests/
+│   │   ├── common/          # Shared utilities (llm_client, json_utils)
+│   │   └── criminal/        # ✓ IMPLEMENTED — 4-pass extraction
+│   │       ├── tier_a.py    # Regex/NER extraction
+│   │       ├── tier_b.py    # LLM classification (65 fields)
+│   │       ├── tier_c.py    # LLM reasoning texts (17 fields)
+│   │       ├── reasoning_points.py   # Atomic point decomposition
+│   │       ├── reasoning_schema.py   # Pydantic models for reasoning
+│   │       ├── schema.py    # CriminalExtractionResult, TierA/B/C
+│   │       ├── pipeline.py  # Orchestrates all 4 passes
+│   │       └── chunker.py   # SAC chunking
+│   ├── qdrant/              # ✓ IMPLEMENTED — Vector store layer
+│   │   ├── collections.py   # pk_judgments schema + indexes
+│   │   ├── embeddings.py    # Voyage 3.5 embedding service
+│   │   ├── ingestion.py     # Multi-point upsert (full_text, chunk, tier_c, reasoning)
+│   │   ├── point_id.py      # Deterministic UUID3 generation
+│   │   └── search.py        # Hybrid search (dense + sparse)
+│   ├── agents/              # TODO — LangGraph agents
+│   ├── personas/            # TODO — Lawyer persona configs
+│   ├── api/                 # TODO — FastAPI backend
+│   └── frontend/            # TODO — React UI
+├── data/                    # Local data files (gitignored)
+├── tests/                   # 99 tests passing
 └── research/                # Research notes and findings
 ```
 

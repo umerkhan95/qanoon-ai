@@ -845,9 +845,12 @@ Layer 4: Confidence & Uncertainty
 
 ---
 
-## Phase 2.7: Structural Reasoning & Data Individuality
+## Phase 2.7: Structural Reasoning & Data Individuality ✓ COMPLETE
 > **Goal**: Maximize retrieval precision through structured datapoint decomposition
 > **Key insight**: Structured retrieval with 850+ datapoints >> unstructured full-text search
+> **Status**: IMPLEMENTED — Reasoning Point Decomposition (#25) + Data Individuality (#26) + Tier B null-string fix
+> **Commits**: `aff2b17` (reasoning decomposition), `d16cbf9` (data individuality), `50f03ec` (tier B fix)
+> **Tests**: 99 passing (36 reasoning, 14 point ID, rest extraction + ingestion)
 
 ### The Core Principle
 Every legal document contains dozens of independent reasoning points. Searching full text conflates them. Our edge: decompose each document into individual reasoning atoms, each independently searchable with rich metadata.
