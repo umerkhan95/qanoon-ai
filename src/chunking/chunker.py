@@ -123,34 +123,70 @@ def chunk_judgment(
 def _split_sections(sections: list[JudgmentSection]) -> list[Chunk]:
     """Split sections into chunks at paragraph boundaries.
 
-    Tiny sections (< MIN_CHUNK_CHARS) are merged into the next section
-    to avoid creating uselessly small chunks.
+    Tiny sections (< MIN_CHUNK_CHARS) are merged into the nearest
+    adjacent chunk to preserve 100% of the content.
     """
     chunks: list[Chunk] = []
+    # Collect tiny sections to merge with adjacent chunks
+    pending_prefix = ""
+    pending_prefix_start: int | None = None
 
-    for section in sections:
-        # Skip tiny sections — they'll be covered by adjacent chunks
-        if len(section.text) < MIN_CHUNK_CHARS:
+    for i, section in enumerate(sections):
+        text = section.text
+        start = section.start_char
+        end = section.end_char
+
+        # Prepend any accumulated tiny section text
+        if pending_prefix:
+            text = pending_prefix + "\n\n" + text
+            start = pending_prefix_start if pending_prefix_start is not None else start
+            pending_prefix = ""
+            pending_prefix_start = None
+
+        if len(text) < MIN_CHUNK_CHARS:
+            # Too small — accumulate for merging with next section
+            pending_prefix = text
+            pending_prefix_start = start
             continue
 
-        if len(section.text) <= TARGET_CHUNK_CHARS:
-            # Section fits in one chunk
+        if len(text) <= TARGET_CHUNK_CHARS:
             chunks.append(Chunk(
-                text=section.text,
+                text=text,
                 chunk_index=0,
-                total_chunks=0,  # Placeholder, set later
+                total_chunks=0,
                 section_type=section.section_type,
-                char_start=section.start_char,
-                char_end=section.end_char,
+                char_start=start,
+                char_end=end,
             ))
         else:
-            # Split at paragraph boundaries
             section_chunks = _split_at_paragraphs(
-                section.text,
+                text,
                 section.section_type,
-                section.start_char,
+                start,
             )
             chunks.extend(section_chunks)
+
+    # If there's a trailing tiny section, append it to the last chunk
+    if pending_prefix and chunks:
+        last = chunks[-1]
+        chunks[-1] = Chunk(
+            text=last.text + "\n\n" + pending_prefix,
+            chunk_index=0,
+            total_chunks=0,
+            section_type=last.section_type,
+            char_start=last.char_start,
+            char_end=pending_prefix_start + len(pending_prefix) if pending_prefix_start is not None else last.char_end,
+        )
+    elif pending_prefix:
+        # Edge case: all sections were tiny
+        chunks.append(Chunk(
+            text=pending_prefix,
+            chunk_index=0,
+            total_chunks=0,
+            section_type=SectionType.BODY,
+            char_start=pending_prefix_start or 0,
+            char_end=(pending_prefix_start or 0) + len(pending_prefix),
+        ))
 
     return chunks
 

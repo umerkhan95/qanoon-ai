@@ -66,23 +66,24 @@ def parse_judgment(text: str) -> list[JudgmentSection]:
         return []
 
     text = text.strip()
-    header_end, body_start = _find_judgment_marker(text)
-    disposition_start = _find_disposition(text, body_start)
+    marker_start, marker_end = _find_judgment_marker(text)
+    disposition_start = _find_disposition(text, marker_end)
 
     sections: list[JudgmentSection] = []
 
-    # Header section (everything before JUDGMENT/ORDER marker)
-    if header_end > 0:
-        header_text = text[:header_end].strip()
+    # Header section (everything up to and including JUDGMENT/ORDER marker)
+    if marker_start > 0:
+        header_text = text[:marker_end].strip()
         if header_text:
             sections.append(JudgmentSection(
                 section_type=SectionType.HEADER,
                 text=header_text,
                 start_char=0,
-                end_char=header_end,
+                end_char=marker_end,
             ))
 
-    # Body section (main reasoning)
+    # Body section (main reasoning, starts after the marker)
+    body_start = marker_end
     body_end = disposition_start if disposition_start else len(text)
     body_text = text[body_start:body_end].strip()
     if body_text:
