@@ -331,12 +331,13 @@ class TierC(BaseModel):
 # ── Combined Result ────────────────────────────────────────────────────────
 
 class CriminalExtractionResult(BaseModel):
-    """Complete extraction result from all three tiers."""
+    """Complete extraction result from all tiers + reasoning decomposition."""
 
     tier_a: TierA = Field(default_factory=TierA)
     tier_b: TierB = Field(default_factory=TierB)
     tier_c: TierC = Field(default_factory=TierC)
     extraction_metadata: dict = Field(default_factory=dict)
+    reasoning_points: list = Field(default_factory=list)
 
     def to_qdrant_payload(self) -> dict:
         """Merge Tier A + B into a flat dict for Qdrant payload (exclude None).

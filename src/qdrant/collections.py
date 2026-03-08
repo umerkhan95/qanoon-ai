@@ -35,6 +35,11 @@ INDEXED_FIELDS = [
     ("parent_case_id", models.PayloadSchemaType.KEYWORD),
     ("court_code", models.PayloadSchemaType.KEYWORD),
     ("tier_c_field", models.PayloadSchemaType.KEYWORD),
+    # Reasoning point fields (ticket #25)
+    ("reasoning_point_type", models.PayloadSchemaType.KEYWORD),
+    ("reasoning_sequence", models.PayloadSchemaType.INTEGER),
+    ("issue_addressed", models.PayloadSchemaType.KEYWORD),
+    ("evidence_type", models.PayloadSchemaType.KEYWORD),
 ]
 
 

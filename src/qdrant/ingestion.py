@@ -6,6 +6,7 @@ One judgment produces N points:
   1. full_text  — Full judgment as single vector (primary search entry)
   2. chunk:{N}  — Only for long judgments (>100K chars), paragraph-split chunks
   3. tier_c:{field} — Each Tier C reasoning text as a separate searchable vector
+  4. reasoning:{N} — Atomic reasoning points (facts, issues, arguments, etc.)
 
 All points share a parent_case_id for grouping and carry structured metadata.
 """
@@ -26,6 +27,7 @@ from .point_id import (
     PointType,
     make_chunk_id,
     make_full_text_id,
+    make_reasoning_id,
     make_tier_c_id,
 )
 
@@ -107,6 +109,7 @@ def ingest_judgment(
     case_number: str,
     chunks: list[dict] | None = None,
     tier_c_texts: dict[str, str] | None = None,
+    reasoning_points: list[dict] | None = None,
     sac_summary: str = "",
 ) -> list[str]:
     """Ingest a single judgment as one or more Qdrant points.
@@ -120,6 +123,7 @@ def ingest_judgment(
         chunks: Pre-computed chunks from chunker.chunk_judgment(). If None
                 and text is short, a single full_text point is created.
         tier_c_texts: Dict of {field_name: text} from to_vector_texts().
+        reasoning_points: List of dicts from ReasoningDecomposition.to_ingestable_texts().
         sac_summary: SAC summary string to store in payload.
 
     Returns:
@@ -196,6 +200,14 @@ def ingest_judgment(
         )
         point_ids.extend(tier_c_ids)
 
+    # ── Point N+: Atomic reasoning points ──
+
+    if reasoning_points:
+        reasoning_ids = _ingest_reasoning_points(
+            client, court, case_number, reasoning_points, base_payload,
+        )
+        point_ids.extend(reasoning_ids)
+
     logger.info(
         "Ingested %s: %d total points (court=%s)",
         case_number, len(point_ids), court,
@@ -250,6 +262,70 @@ def _ingest_tier_c(
     return point_ids
 
 
+def _ingest_reasoning_points(
+    client: QdrantClient,
+    court: str,
+    case_number: str,
+    reasoning_points: list[dict],
+    base_payload: dict,
+) -> list[str]:
+    """Embed and upsert atomic reasoning points as separate Qdrant points.
+
+    Each reasoning point dict must have:
+        - sequence: int
+        - point_type: str (reasoning point type, e.g. "facts", "issue")
+        - text: str (the reasoning text)
+        - payload: dict (point-specific metadata)
+    """
+    # Filter to points with valid text
+    valid = [rp for rp in reasoning_points if rp.get("text", "").strip()]
+    skipped = len(reasoning_points) - len(valid)
+    if skipped:
+        logger.warning(
+            "Skipped %d empty reasoning points for %s", skipped, case_number
+        )
+    if not valid:
+        return []
+
+    texts = [rp["text"] for rp in valid]
+    logger.info("Embedding %d reasoning points for %s", len(texts), case_number)
+    vectors = embed_batch(texts, input_type="document")
+
+    if len(vectors) != len(texts):
+        raise ValueError(
+            f"Reasoning point embedding count mismatch for {case_number}: "
+            f"sent {len(texts)} texts, got {len(vectors)} vectors"
+        )
+
+    point_ids: list[str] = []
+    for rp, vector in zip(valid, vectors):
+        try:
+            seq = rp["sequence"]
+            rp_type = rp["point_type"]
+        except KeyError as e:
+            logger.error(
+                "Reasoning point missing required key %s for %s — skipping",
+                e, case_number,
+            )
+            continue
+
+        pid = make_reasoning_id(court, case_number, seq)
+        rp_payload = {
+            **base_payload,
+            "point_type": PointType.REASONING.value,
+            "point_key": pid.key,
+            "reasoning_point_type": rp_type,
+            "reasoning_sequence": seq,
+            "reasoning_metadata": rp.get("payload", {}),
+        }
+        point = _make_point(pid.uuid, vector, rp_payload, rp["text"])
+        _upsert_single(client, point)
+        point_ids.append(pid.uuid)
+
+    logger.info("Ingested %d reasoning points for %s", len(point_ids), case_number)
+    return point_ids
+
+
 def ingest_batch(
     client: QdrantClient,
     items: list[dict],
@@ -264,6 +340,7 @@ def ingest_batch(
     Optional:
         - "chunks": list of chunk dicts
         - "tier_c_texts": dict of {field_name: text}
+        - "reasoning_points": list of dicts from ReasoningDecomposition.to_ingestable_texts()
         - "sac_summary": str
 
     Returns:
@@ -283,6 +360,7 @@ def ingest_batch(
                 case_number=item["case_number"],
                 chunks=item.get("chunks"),
                 tier_c_texts=item.get("tier_c_texts"),
+                reasoning_points=item.get("reasoning_points"),
                 sac_summary=item.get("sac_summary", ""),
             )
             all_ids.extend(ids)

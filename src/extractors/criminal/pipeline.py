@@ -14,6 +14,7 @@ import time
 from typing import Optional
 
 from ..common.llm_client import LLMContentRefused, LLMError, LLMParsingError
+from .reasoning_schema import ReasoningDecomposition
 from .schema import CriminalExtractionResult, TierB, TierC
 from .tier_a import extract_tier_a
 
@@ -85,11 +86,37 @@ def extract_criminal_judgment(
             metadata["tier_c_error"] = f"llm_error: {e}"
             logger.error("Tier C LLM error (auth/config): %s", e)
 
+    # ── Pass 4: Reasoning Point Decomposition (LLM) ──
+    reasoning_points_data: list = []
+    if not skip_llm:
+        t0 = time.time()
+        try:
+            from .reasoning_points import extract_reasoning_points
+            decomposition = extract_reasoning_points(text)
+            reasoning_points_data = decomposition.to_ingestable_texts()
+            metadata["reasoning_seconds"] = round(time.time() - t0, 3)
+            metadata["reasoning_point_count"] = len(reasoning_points_data)
+            logger.info(
+                "Reasoning decomposition in %.3fs — %d points",
+                metadata["reasoning_seconds"],
+                len(reasoning_points_data),
+            )
+        except LLMContentRefused as e:
+            metadata["reasoning_error"] = f"content_refused: {e}"
+            logger.warning("Reasoning decomposition content refused: %s", e)
+        except LLMParsingError as e:
+            metadata["reasoning_error"] = f"parsing_failed: {e}"
+            logger.error("Reasoning decomposition JSON parsing failed: %s", e)
+        except LLMError as e:
+            metadata["reasoning_error"] = f"llm_error: {e}"
+            logger.error("Reasoning decomposition LLM error: %s", e)
+
     result = CriminalExtractionResult(
         tier_a=tier_a,
         tier_b=tier_b,
         tier_c=tier_c,
         extraction_metadata=metadata,
+        reasoning_points=reasoning_points_data,
     )
 
     coverage = result.field_coverage()

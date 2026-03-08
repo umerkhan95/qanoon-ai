@@ -9,6 +9,7 @@ Examples:
   SC:CRL.A.1-K_2018:full_text:0     → UUID3(...)
   SC:CRL.A.1-K_2018:chunk:3         → UUID3(...)
   SC:CRL.A.1-K_2018:tier_c:ratio_decidendi → UUID3(...)
+  SC:CRL.A.1-K_2018:reasoning:5     → UUID3(...)
 
 Properties:
   - Deterministic: same input always produces same UUID
@@ -28,6 +29,7 @@ class PointType(str, Enum):
     FULL_TEXT = "full_text"
     CHUNK = "chunk"
     TIER_C = "tier_c"
+    REASONING = "reasoning"
 
 
 class PointId(BaseModel):
@@ -93,4 +95,14 @@ def make_tier_c_id(court: str, case_number: str, field_name: str) -> PointId:
         case_number=case_number,
         point_type=PointType.TIER_C,
         sequence=field_name,
+    )
+
+
+def make_reasoning_id(court: str, case_number: str, sequence: int) -> PointId:
+    """Create a point ID for an atomic reasoning point."""
+    return PointId(
+        court=court,
+        case_number=case_number,
+        point_type=PointType.REASONING,
+        sequence=str(sequence),
     )
