@@ -128,16 +128,18 @@ A multi-agent legal intelligence platform for Pakistani law. LangGraph Deep Agen
 ## Code Rules
 
 - Never add Co-Authored-By or any co-author lines in git commit messages
-- SRP: every module/script does one thing
+- **Single Responsibility Principle (SRP)**: Every module, function, and file does exactly ONE thing. Split early, split often. One file = one concern. One function = one job. This is non-negotiable for maintainability in Claude Code workflows.
 - One extractor per website — no shared extraction logic
-- Plain functions preferred over classes
+- Plain functions preferred over classes (use classes only for data models like Pydantic schemas)
 - All config via environment variables
 - No hardcoded URLs or API keys
-- Reusable components across pipelines
-- Every pipeline module independently testable
+- Reusable components across pipelines (shared utilities in `common/`)
+- Every pipeline module independently testable — each extractor works standalone
 - Qdrant collections follow semantic data model (see plans.md)
 - All legal data must preserve original citation format
 - Never discard metadata — extract everything, filter later
+- Type hints on all function signatures
+- Pydantic models for all data structures crossing module boundaries
 
 ## Directory Structure (Target)
 
