@@ -1,0 +1,12 @@
+Model,Type,MLEB Rank,NDCG@10,Dimensions,Context Length,Pricing ($/1M tokens),Free Tokens,License,Legal Specialization,Matryoshka Support,Deployment,Recommended For
+Kanon 2 Embedder,Legal-Specific,1,86.03,1792,16384,~0.20 (est.),0,Proprietary,Yes,Yes,API + Self-Hosted (AWS),Best legal accuracy + speed
+Voyage 3.5,General,3,84.07,1024 (256-2048),32768,0.06,200M,Proprietary,Moderate,Yes,API,Best price/performance ratio
+Voyage 3 Large,General,2,85.71,1024 (256-2048),32768,0.22,200M,Proprietary,Moderate,Yes,API,Maximum accuracy
+Voyage Law 2,Legal-Specific,8,79.63,1024,16384,0.22,50M,Proprietary,Yes,Yes,API,Not recommended (underperforms v3)
+OpenAI text-embedding-3-large,General,N/A,~78.0,3072,8192,0.00013,0,Proprietary,No,No,API,Not recommended (8K context too short)
+OpenAI text-embedding-3-small,General,N/A,~75.0,1536,8192,0.00002,0,Proprietary,No,No,API,Not recommended (8K context + low legal performance)
+Cohere embed-v4,General,N/A,Not tested,1536 (256-1536),128000,0.12 (text),0,Proprietary,No,Yes,API,Multimodal documents only
+BGE-M3,General,N/A,Not tested,1024,8192,Free,Unlimited,Open source,No,Yes,Self-hosted (HF/Ollama),Proof-of-concept only
+Nomic Embed Text v1,General,N/A,Not tested,1024,8192,Free (1M/mo),1M,Open source,No,No,Self-hosted (HF/Ollama),MVP / budget constrained
+Snowflake Arctic Embed 2,General,N/A,Not tested,Varies,Unknown,Free,Unlimited,Open source (Apache 2.0),No,Yes,Self-hosted,Edge deployment / maximum privacy
+Jina Embeddings v3,General,N/A,Not tested,1024 (adjustable),8192,Custom (contact sales),10M,Proprietary,No,Yes,API,Multilingual documents
