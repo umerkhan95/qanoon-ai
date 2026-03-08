@@ -73,19 +73,21 @@ def parse_judgment(text: str) -> list[JudgmentSection]:
 
     # Header section (everything up to and including JUDGMENT/ORDER marker)
     if marker_start > 0:
-        header_text = text[:marker_end].strip()
+        header_start, header_end = _strip_span(text, 0, marker_end)
+        header_text = text[header_start:header_end]
         if header_text:
             sections.append(JudgmentSection(
                 section_type=SectionType.HEADER,
                 text=header_text,
-                start_char=0,
-                end_char=marker_end,
+                start_char=header_start,
+                end_char=header_end,
             ))
 
     # Body section (main reasoning, starts after the marker)
-    body_start = marker_end
-    body_end = disposition_start if disposition_start else len(text)
-    body_text = text[body_start:body_end].strip()
+    body_raw_start = marker_end
+    body_raw_end = disposition_start if disposition_start else len(text)
+    body_start, body_end = _strip_span(text, body_raw_start, body_raw_end)
+    body_text = text[body_start:body_end]
     if body_text:
         para_nums = _extract_paragraph_numbers(body_text)
         sections.append(JudgmentSection(
@@ -98,13 +100,14 @@ def parse_judgment(text: str) -> list[JudgmentSection]:
 
     # Disposition section (final orders)
     if disposition_start and disposition_start < len(text):
-        disp_text = text[disposition_start:].strip()
+        disp_start, disp_end = _strip_span(text, disposition_start, len(text))
+        disp_text = text[disp_start:disp_end]
         if disp_text:
             sections.append(JudgmentSection(
                 section_type=SectionType.DISPOSITION,
                 text=disp_text,
-                start_char=disposition_start,
-                end_char=len(text),
+                start_char=disp_start,
+                end_char=disp_end,
             ))
 
     # Fallback: if no sections found, treat entire text as body
@@ -155,13 +158,31 @@ def _find_disposition(text: str, search_from: int) -> Optional[int]:
     if not match:
         return None
 
-    # Walk back to the start of the paragraph containing the match
+    # Walk back to the nearest newline before the match, but NOT further
+    # than one paragraph — only skip leading whitespace on the same line.
     abs_pos = search_start + match.start()
-    para_start = text.rfind("\n", search_from, abs_pos)
-    if para_start == -1:
-        para_start = search_from
 
-    return para_start
+    # Find the newline immediately before the match
+    line_start = text.rfind("\n", max(search_from, abs_pos - 200), abs_pos)
+    if line_start == -1:
+        line_start = abs_pos
+    else:
+        line_start += 1  # Skip the newline itself
+
+    return line_start
+
+
+def _strip_span(text: str, start: int, end: int) -> tuple[int, int]:
+    """Return adjusted (start, end) that skip leading/trailing whitespace.
+
+    Unlike str.strip(), this preserves the char offsets so
+    text[new_start:new_end] == text[start:end].strip().
+    """
+    while start < end and text[start].isspace():
+        start += 1
+    while end > start and text[end - 1].isspace():
+        end -= 1
+    return start, end
 
 
 def _extract_paragraph_numbers(text: str) -> list[int]:

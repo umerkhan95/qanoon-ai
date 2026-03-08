@@ -11,7 +11,7 @@ from __future__ import annotations
 
 import logging
 
-from src.extractors.common.llm_client import LLMError, call_llm_json
+from src.extractors.common.llm_client import call_llm_json  # noqa: absolute import — src is on sys.path
 
 logger = logging.getLogger(__name__)
 
@@ -57,12 +57,17 @@ def generate_summary(text: str) -> str:
             temperature=0.0,
         )
         summary = result.get("summary", "").strip()
-        if summary:
-            logger.info("Generated SAC summary: %d chars", len(summary))
+        if not summary:
+            logger.warning(
+                "SAC summary: LLM returned no 'summary' key. Keys: %s",
+                list(result.keys()),
+            )
+            return ""
+        logger.info("Generated SAC summary: %d chars", len(summary))
         return summary
 
-    except LLMError as e:
-        logger.warning("SAC summary generation failed: %s", e)
+    except Exception as e:
+        logger.warning("SAC summary generation failed: %s: %s", type(e).__name__, e)
         return ""
 
 

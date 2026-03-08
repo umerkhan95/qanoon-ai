@@ -95,7 +95,7 @@ def chunk_judgment(
         len(text),
     )
     sections = parse_judgment(text)
-    raw_chunks = _split_sections(sections)
+    raw_chunks = _split_sections(sections, text)
 
     # Assign indices and prepend summary
     total = len(raw_chunks)
@@ -120,38 +120,42 @@ def chunk_judgment(
     return result
 
 
-def _split_sections(sections: list[JudgmentSection]) -> list[Chunk]:
+def _split_sections(
+    sections: list[JudgmentSection],
+    original_text: str,
+) -> list[Chunk]:
     """Split sections into chunks at paragraph boundaries.
 
     Tiny sections (< MIN_CHUNK_CHARS) are merged into the nearest
-    adjacent chunk to preserve 100% of the content.
+    adjacent chunk using the original document text (no synthetic joins).
     """
     chunks: list[Chunk] = []
-    # Collect tiny sections to merge with adjacent chunks
-    pending_prefix = ""
-    pending_prefix_start: int | None = None
+    # Track the start of any pending tiny section for merging
+    pending_start: int | None = None
+    pending_end: int | None = None
 
-    for i, section in enumerate(sections):
-        text = section.text
+    for section in sections:
         start = section.start_char
         end = section.end_char
 
-        # Prepend any accumulated tiny section text
-        if pending_prefix:
-            text = pending_prefix + "\n\n" + text
-            start = pending_prefix_start if pending_prefix_start is not None else start
-            pending_prefix = ""
-            pending_prefix_start = None
+        # Extend span if we have a pending tiny section
+        if pending_start is not None:
+            start = pending_start
+            pending_start = None
+            pending_end = None
 
-        if len(text) < MIN_CHUNK_CHARS:
-            # Too small — accumulate for merging with next section
-            pending_prefix = text
-            pending_prefix_start = start
+        # Get the text from the original document for this span
+        span_text = original_text[start:end].strip()
+
+        if len(span_text) < MIN_CHUNK_CHARS:
+            # Too small — remember span for merging with next section
+            pending_start = start
+            pending_end = end
             continue
 
-        if len(text) <= TARGET_CHUNK_CHARS:
+        if len(span_text) <= TARGET_CHUNK_CHARS:
             chunks.append(Chunk(
-                text=text,
+                text=span_text,
                 chunk_index=0,
                 total_chunks=0,
                 section_type=section.section_type,
@@ -160,32 +164,35 @@ def _split_sections(sections: list[JudgmentSection]) -> list[Chunk]:
             ))
         else:
             section_chunks = _split_at_paragraphs(
-                text,
+                span_text,
                 section.section_type,
                 start,
             )
             chunks.extend(section_chunks)
 
     # If there's a trailing tiny section, append it to the last chunk
-    if pending_prefix and chunks:
+    if pending_start is not None and chunks:
         last = chunks[-1]
+        merged_end = pending_end if pending_end is not None else last.char_end
+        merged_text = original_text[last.char_start:merged_end].strip()
         chunks[-1] = Chunk(
-            text=last.text + "\n\n" + pending_prefix,
+            text=merged_text,
             chunk_index=0,
             total_chunks=0,
             section_type=last.section_type,
             char_start=last.char_start,
-            char_end=pending_prefix_start + len(pending_prefix) if pending_prefix_start is not None else last.char_end,
+            char_end=merged_end,
         )
-    elif pending_prefix:
+    elif pending_start is not None:
         # Edge case: all sections were tiny
+        pe = pending_end if pending_end is not None else len(original_text)
         chunks.append(Chunk(
-            text=pending_prefix,
+            text=original_text[pending_start:pe].strip(),
             chunk_index=0,
             total_chunks=0,
             section_type=SectionType.BODY,
-            char_start=pending_prefix_start or 0,
-            char_end=(pending_prefix_start or 0) + len(pending_prefix),
+            char_start=pending_start,
+            char_end=pe,
         ))
 
     return chunks
@@ -225,6 +232,8 @@ def _split_at_paragraphs(
     chunks: list[Chunk] = []
     current_start = paragraphs[0][0]
     current_end = paragraphs[0][0]
+    # Track local offsets for each chunk (within `text`) for safe merges
+    chunk_local_starts: list[int] = []
 
     for para_start, para_end in paragraphs:
         para_len = para_end - para_start
@@ -232,16 +241,11 @@ def _split_at_paragraphs(
 
         if current_len > 0 and current_len + para_len > TARGET_CHUNK_CHARS:
             # Flush current chunk
-            chunk_text = text[current_start:current_end].strip()
-            if len(chunk_text) >= MIN_CHUNK_CHARS:
-                chunks.append(Chunk(
-                    text=chunk_text,
-                    chunk_index=0,
-                    total_chunks=0,
-                    section_type=section_type,
-                    char_start=base_offset + current_start,
-                    char_end=base_offset + current_end,
-                ))
+            _flush_chunk(
+                chunks, chunk_local_starts, text,
+                current_start, current_end,
+                section_type, base_offset,
+            )
 
             # Start new chunk with overlap
             overlap_start = _find_overlap_start(
@@ -253,32 +257,62 @@ def _split_at_paragraphs(
             current_end = para_end
 
     # Flush remaining
-    chunk_text = text[current_start:current_end].strip()
+    _flush_chunk(
+        chunks, chunk_local_starts, text,
+        current_start, current_end,
+        section_type, base_offset,
+    )
+
+    return chunks
+
+
+def _flush_chunk(
+    chunks: list[Chunk],
+    chunk_local_starts: list[int],
+    text: str,
+    start: int,
+    end: int,
+    section_type: SectionType,
+    base_offset: int,
+) -> None:
+    """Flush accumulated text as a chunk, merging tiny remainders into the previous chunk."""
+    chunk_text = text[start:end].strip()
+    if not chunk_text:
+        return
+
     if len(chunk_text) >= MIN_CHUNK_CHARS:
         chunks.append(Chunk(
             text=chunk_text,
             chunk_index=0,
             total_chunks=0,
             section_type=section_type,
-            char_start=base_offset + current_start,
-            char_end=base_offset + current_end,
+            char_start=base_offset + start,
+            char_end=base_offset + end,
         ))
+        chunk_local_starts.append(start)
     elif chunks:
-        # Merge tiny remainder into last chunk
-        last = chunks[-1]
-        merged_text = text[
-            last.char_start - base_offset : current_end
-        ].strip()
+        # Merge tiny chunk into the previous one using tracked local offset
+        prev_local_start = chunk_local_starts[-1]
+        merged_text = text[prev_local_start:end].strip()
         chunks[-1] = Chunk(
             text=merged_text,
             chunk_index=0,
             total_chunks=0,
             section_type=section_type,
-            char_start=last.char_start,
-            char_end=base_offset + current_end,
+            char_start=base_offset + prev_local_start,
+            char_end=base_offset + end,
         )
-
-    return chunks
+    else:
+        # First chunk is tiny — emit it anyway (will be merged by _split_sections)
+        chunks.append(Chunk(
+            text=chunk_text,
+            chunk_index=0,
+            total_chunks=0,
+            section_type=section_type,
+            char_start=base_offset + start,
+            char_end=base_offset + end,
+        ))
+        chunk_local_starts.append(start)
 
 
 def _find_overlap_start(text: str, end_pos: int, overlap_chars: int) -> int:

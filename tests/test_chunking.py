@@ -220,6 +220,77 @@ def test_chunk_pydantic_serialization():
     assert data["section_type"] == "body"
 
 
+# ── Data Integrity Tests ────────────────────────────────────────────
+
+
+def test_section_offsets_match_text():
+    """char_start:char_end must reconstruct to section.text from the original."""
+    text = SAMPLE_JUDGMENT.strip()
+    sections = parse_judgment(text)
+    for s in sections:
+        assert text[s.start_char:s.end_char].strip() == s.text
+
+
+def test_no_content_loss_in_sections():
+    """All non-whitespace chars from original must appear in sections."""
+    import re
+    text = SAMPLE_JUDGMENT.strip()
+    sections = parse_judgment(text)
+    orig = re.sub(r"\s+", "", text)
+    sect = re.sub(r"\s+", "", "".join(s.text for s in sections))
+    assert orig == sect
+
+
+def test_long_chunk_no_word_loss():
+    """Multi-chunk splitting must not lose any words."""
+    paras = []
+    for i in range(1, 201):
+        paras.append(f"\n{i}. word_{i} " + "x" * 600)
+    long_text = "HEADER\n\nJUDGMENT\n" + "".join(paras)
+    assert len(long_text) > MAX_SINGLE_EMBED_CHARS
+
+    chunks = chunk_judgment(long_text)
+    all_text = " ".join(c.text for c in chunks)
+    for i in range(1, 201):
+        assert f"word_{i}" in all_text, f"word_{i} missing from chunks"
+
+
+def test_long_chunk_first_and_last_present():
+    """Header and trailing content must survive merging."""
+    paras = []
+    for i in range(1, 201):
+        paras.append(f"\n{i}. " + "x" * 600)
+    long_text = "SUPREME COURT HEADER\n\nJUDGMENT\n" + "".join(paras) + "\nMFR - Islamabad"
+    assert len(long_text) > MAX_SINGLE_EMBED_CHARS
+
+    chunks = chunk_judgment(long_text)
+    all_text = " ".join(c.text for c in chunks)
+    assert "SUPREME COURT HEADER" in all_text
+    assert "MFR - Islamabad" in all_text
+
+
+def test_chunk_offsets_in_bounds():
+    """All chunk char_start/char_end must be valid offsets."""
+    paras = []
+    for i in range(1, 201):
+        paras.append(f"\n{i}. " + "x" * 600)
+    long_text = "H\n\nJUDGMENT\n" + "".join(paras)
+
+    chunks = chunk_judgment(long_text)
+    for c in chunks:
+        assert c.char_start >= 0
+        assert c.char_end <= len(long_text)
+        assert c.char_start <= c.char_end
+
+
+def test_single_chunk_exact_text():
+    """Short judgment single-chunk must be byte-exact (no summary)."""
+    text = "This is a short judgment with no splitting needed."
+    chunks = chunk_judgment(text)
+    assert len(chunks) == 1
+    assert chunks[0].text == text
+
+
 # ── Run all tests ───────────────────────────────────────────────────
 
 
