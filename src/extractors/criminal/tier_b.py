@@ -169,13 +169,19 @@ def _parse_tier_b(raw: dict[str, Any]) -> TierB:
         val = raw[field_name]
         if val is None:
             continue
+        # LLM sometimes returns literal "null"/"None" strings instead of JSON null
+        if isinstance(val, str) and val.strip().lower() in ("null", "none", "n/a", ""):
+            continue
 
         annotation = field_info.annotation
         anno_str = str(annotation)
 
         if annotation == list[str] or "list[str]" in anno_str:
             if isinstance(val, list):
-                cleaned[field_name] = [str(v) for v in val if v is not None]
+                cleaned[field_name] = [
+                    str(v) for v in val
+                    if v is not None and str(v).strip().lower() not in ("null", "none", "n/a", "")
+                ]
             elif isinstance(val, str):
                 cleaned[field_name] = [val]
         elif annotation in (bool, "bool") or "bool" in str(annotation):
