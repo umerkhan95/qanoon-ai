@@ -49,7 +49,7 @@ MIN_TIER_A_COVERAGE = 15.0  # percent
 
 def validate_extraction(
     text: str,
-    payload: dict[str, Any],
+    payload: dict[str, Any] | None,
     case_number: str = "",
 ) -> QualityReport:
     """Validate an extraction result before Qdrant ingestion.
@@ -63,6 +63,10 @@ def validate_extraction(
         QualityReport with pass/fail status and error/warning lists.
     """
     report = QualityReport(case_number=case_number)
+
+    if payload is None:
+        report.fail("Payload is None — extraction likely failed completely")
+        return report
 
     # 1. Text length check
     if not text or len(text.strip()) < MIN_TEXT_LENGTH:
@@ -88,7 +92,7 @@ def validate_extraction(
     total = len(payload)
     filled = sum(
         1 for v in payload.values()
-        if v is not None and v != [] and v != "" and v != 0
+        if v is not None and v != [] and v != ""
     )
     report.field_coverage = round(filled / max(total, 1) * 100, 1)
 

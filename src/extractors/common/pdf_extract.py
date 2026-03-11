@@ -7,10 +7,10 @@ Reused by all court pipeline crawlers.
 
 from __future__ import annotations
 
+import asyncio
 import logging
 import re
 import tempfile
-import time
 from pathlib import Path
 from urllib.parse import unquote, urlparse
 
@@ -123,7 +123,7 @@ async def download_pdf(
                     "Download attempt %d/%d failed for %s: %s (retrying in %ds)",
                     attempt, max_retries, url, e, wait,
                 )
-                time.sleep(wait)
+                await asyncio.sleep(wait)
 
     logger.error("Download failed after %d attempts: %s: %s", max_retries, url, last_error)
     return None
