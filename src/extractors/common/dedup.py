@@ -21,7 +21,12 @@ def text_hash(text: str) -> str:
 
     Normalizes whitespace and lowercases before hashing so minor
     formatting differences between sources don't create false negatives.
+
+    Raises ValueError for empty/whitespace-only text to prevent
+    false duplicate collisions from failed extractions.
     """
+    if not text or not text.strip():
+        raise ValueError("Cannot hash empty text — likely a failed extraction")
     normalized = re.sub(r"\s+", " ", text.strip().lower())
     return hashlib.sha256(normalized.encode("utf-8")).hexdigest()
 

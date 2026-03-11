@@ -170,6 +170,7 @@ A multi-agent legal intelligence platform for Pakistani law. LangGraph Deep Agen
 - Never discard metadata — extract everything, filter later
 - Type hints on all function signatures
 - Pydantic models for all data structures crossing module boundaries
+- **crawl4ai docs-first**: Before implementing any crawling/extraction logic, ALWAYS check crawl4ai docs (https://docs.crawl4ai.com/) for built-in solutions. Use native strategies (`DefaultTableExtraction`, `JsonCssExtractionStrategy`, session management, `js_only`) instead of reinventing with custom JS injection or manual HTML parsing. Key docs: `/core/table_extraction/`, `/extraction/no-llm-strategies/`, `/advanced/session-management/`, `/core/page-interaction/`
 
 ## Directory Structure
 
@@ -178,7 +179,8 @@ A multi-agent legal intelligence platform for Pakistani law. LangGraph Deep Agen
 ├── plans.md
 ├── src/
 │   ├── pipelines/           # crawl4ai extractors (one per site)
-│   │   └── commonlii/      # ✓ IMPLEMENTED — 2,906 SC cases
+│   │   ├── commonlii/      # ✓ IMPLEMENTED — 2,906 SC cases
+│   │   └── peshawar_hc/    # ✓ IMPLEMENTED — 5,590 reported judgments
 │   ├── extractors/          # Structured field extractors
 │   │   ├── common/          # Shared utilities (llm_client, json_utils)
 │   │   └── criminal/        # ✓ IMPLEMENTED — 4-pass extraction

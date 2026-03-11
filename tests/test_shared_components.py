@@ -102,6 +102,18 @@ class TestJudgeExtractor:
         names = extract_judge_names(text)
         assert len(names) == len(set(names))
 
+    def test_all_caps_names(self):
+        text = "PRESENT: MR. JUSTICE IFTIKHAR CHAUDHRY, MR. JUSTICE ANWAR ZAHEER JAMALI"
+        names = extract_judge_names(text)
+        assert len(names) >= 2
+        assert any("Iftikhar" in n for n in names)
+
+    def test_none_input(self):
+        assert extract_judge_names(None) == []
+
+    def test_empty_string(self):
+        assert extract_judge_names("") == []
+
 
 # ── Quality Validator ─────────────────────────────────────────────────────
 
@@ -150,10 +162,11 @@ class TestQualityValidator:
             "field_a": None,
             "field_b": "",
             "field_c": [],
+            "field_d": 0,  # numeric 0 counts as filled
         }
         report = validate_extraction(text, payload)
-        # 2 filled out of 5 = 40%
-        assert report.field_coverage == 40.0
+        # 3 filled (X, Y, 0) out of 6 = 50%
+        assert report.field_coverage == 50.0
 
     def test_consistency_diyat_conviction(self):
         text = "x" * 1000
@@ -165,6 +178,11 @@ class TestQualityValidator:
         }
         report = validate_extraction(text, payload)
         assert any("diyat" in w for w in report.warnings)
+
+    def test_none_payload(self):
+        report = validate_extraction("x" * 1000, None)
+        assert not report.passed
+        assert any("None" in e for e in report.errors)
 
 
 # ── Dedup ─────────────────────────────────────────────────────────────────
@@ -186,6 +204,12 @@ class TestDedup:
         # Different whitespace should produce same hash
         assert text_hash("hello  world") == text_hash("hello world")
         assert text_hash("  hello world  ") == text_hash("hello world")
+
+    def test_text_hash_empty_raises(self):
+        with pytest.raises(ValueError, match="empty text"):
+            text_hash("")
+        with pytest.raises(ValueError, match="empty text"):
+            text_hash("   ")
 
     def test_text_hash_case_insensitive(self):
         assert text_hash("Hello World") == text_hash("hello world")
@@ -248,6 +272,14 @@ class TestRateLimiter:
             limiter.wait()
         assert limiter.request_count == 5
 
+    def test_zero_rate_raises(self):
+        with pytest.raises(ValueError, match="positive"):
+            RateLimiter(requests_per_second=0.0)
+
+    def test_negative_rate_raises(self):
+        with pytest.raises(ValueError, match="positive"):
+            RateLimiter(requests_per_second=-1.0)
+
 
 # ── Section Splitter ──────────────────────────────────────────────────────
 
@@ -261,7 +293,7 @@ class TestSectionSplitter:
 
     def test_empty_text(self):
         result = split_judgment("")
-        assert result == {"full_text": ""}
+        assert result == {"full_text": "", "header": ""}
 
     def test_detects_facts_section(self):
         text = (

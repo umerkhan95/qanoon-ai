@@ -87,6 +87,7 @@ def split_judgment(text: str) -> dict[str, str]:
     result: dict[str, str] = {"full_text": text}
 
     if not text or len(text.strip()) < 200:
+        result["header"] = text.strip() if text else ""
         return result
 
     # Header is always the first ~15% of the judgment (court info, parties, etc.)

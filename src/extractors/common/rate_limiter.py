@@ -32,6 +32,8 @@ class RateLimiter:
         requests_per_second: float = 2.0,
         burst: int | None = None,
     ) -> None:
+        if requests_per_second <= 0:
+            raise ValueError(f"requests_per_second must be positive, got {requests_per_second}")
         self.rate = requests_per_second
         self.burst = burst or max(1, int(requests_per_second))
         self._tokens = float(self.burst)

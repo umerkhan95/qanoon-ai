@@ -6,7 +6,10 @@ Handles "PRESENT: Mr. Justice X" blocks and "Hon'ble" patterns.
 
 from __future__ import annotations
 
+import logging
 import re
+
+logger = logging.getLogger(__name__)
 
 
 _STOP_WORDS = {
@@ -27,43 +30,58 @@ def extract_judge_names(text: str) -> list[str]:
 
     Returns sorted, deduplicated list of cleaned names.
     """
+    if not text:
+        return []
     judges: set[str] = set()
     header = re.sub(r"\s+", " ", text[:3000])
 
-    # Pattern 1: "Mr./Mrs./Ms. Justice <Name>"
+    # Name token: matches Title Case ("Iftikhar") and ALL CAPS ("IFTIKHAR")
+    _NAME_TOKEN = r"[A-Z][a-zA-Z]+"
+    _NAME_SEQ = rf"{_NAME_TOKEN}(?:\s+{_NAME_TOKEN}){{1,5}}"
+
+    # Pattern 1: "Mr./MR./Mrs./Ms. Justice <Name>"
     for m in re.finditer(
-        r"(?:Mr\.|Mrs\.|Ms\.)?\s*Justice\s+([A-Z][a-z]+(?:\s+[A-Z][a-z]+){1,5})",
+        rf"(?:MR\.|Mr\.|MRS\.|Mrs\.|MS\.|Ms\.)?\s*(?:JUSTICE|Justice)\s+({_NAME_SEQ})",
         header,
     ):
-        name = _clean_name(m.group(1).strip())
+        name = _clean_name(_title_case(m.group(1).strip()))
         if name:
             judges.add(name)
 
-    # Pattern 2: "PRESENT: ..." block
+    # Pattern 2: "PRESENT: ..." block (end at double newline, section start, or end of text)
     present_block = re.search(
-        r"PRESENT[:\s]+(.+?)(?:\n\n|\n[A-Z])",
+        r"PRESENT[:\s]+(.+?)(?:\n\n|\n[A-Z]|$)",
         text[:3000],
         re.DOTALL | re.IGNORECASE,
     )
     if present_block:
         normalized = re.sub(r"\s+", " ", present_block.group(1))
         for m in re.finditer(
-            r"Justice\s+([A-Z][a-z]+(?:\s+[A-Z][a-z]+){1,5})", normalized
+            rf"(?:JUSTICE|Justice)\s+({_NAME_SEQ})", normalized
         ):
-            name = _clean_name(m.group(1).strip())
+            name = _clean_name(_title_case(m.group(1).strip()))
             if name:
                 judges.add(name)
 
     # Pattern 3: "Hon'ble Justice <Name>"
     for m in re.finditer(
-        r"Hon['\u2019]?ble\s+(?:Mr\.\s+)?Justice\s+([A-Z][a-z]+(?:\s+[A-Z][a-z]+){1,5})",
+        rf"Hon['\u2019]?ble\s+(?:(?:Mr|MR)\.\s+)?(?:JUSTICE|Justice)\s+({_NAME_SEQ})",
         header,
     ):
-        name = _clean_name(m.group(1).strip())
+        name = _clean_name(_title_case(m.group(1).strip()))
         if name:
             judges.add(name)
 
+    if not judges and len(text) > 500:
+        logger.info("No judge names found in %d-char text: %.80s", len(text), header[:80])
     return sorted(judges)
+
+
+def _title_case(name: str) -> str:
+    """Normalize ALL CAPS names to Title Case for consistent dedup."""
+    if name.isupper():
+        return name.title()
+    return name
 
 
 def _clean_name(name: str) -> str | None:

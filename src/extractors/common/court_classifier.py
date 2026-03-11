@@ -6,9 +6,12 @@ Reused by all court-specific pipelines and Tier A extractors.
 
 from __future__ import annotations
 
+import logging
 import re
 from enum import Enum
 from typing import Optional
+
+logger = logging.getLogger(__name__)
 
 
 class CourtCode(str, Enum):
@@ -73,6 +76,8 @@ _NAME_TO_CODE: dict[str, CourtCode] = {
 
 def extract_court_name(text: str) -> Optional[str]:
     """Extract court name from judgment header (first 2000 chars)."""
+    if not text:
+        return None
     header = text[:2000]
     for court in _COURT_NAMES:
         m = re.search(court, header, re.IGNORECASE)
@@ -95,7 +100,10 @@ def classify_court_code(court_name: Optional[str] = None, text: str = "") -> Cou
         court_name: Extracted court name (preferred).
         text: Full text to search if court_name is None.
     """
-    source = (court_name or text).lower()
+    source = (court_name or text or "").lower()
+    if not source.strip():
+        logger.warning("classify_court_code called with no court_name and empty text")
+        return CourtCode.UNKNOWN
     for key, code in _NAME_TO_CODE.items():
         if key in source:
             return code
@@ -104,6 +112,7 @@ def classify_court_code(court_name: Optional[str] = None, text: str = "") -> Cou
         return CourtCode.SESSIONS
     if "district" in source:
         return CourtCode.DISTRICT
+    logger.info("Court code UNKNOWN for: %.80s", source.strip())
     return CourtCode.UNKNOWN
 
 
